@@ -23,11 +23,6 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".DetailMenuActivity" />
-        <activity android:name=".KeranjangActivity" />
-        <activity android:name=".PembayaranActivity" />
-        <activity android:name=".MenungguKasirActivity" />
-        <activity android:name=".MenungguQrisActivity" />
     </application>
 
 </manifest>

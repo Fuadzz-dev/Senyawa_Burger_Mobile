@@ -17,7 +17,7 @@
         <!-- Hero -->
         <div class="hero">
             <img
-                src="{{ $menu->foto ? 'data:image/jpeg;base64,' . base64_encode($menu->foto) : asset('default.png') }}"
+                src="{{ $menu->foto ? 'data:image/jpeg;base64,' . base64_encode($menu->foto) : '/default.png' }}"
                 alt="{{ $menu->nama_menu }}"
                 id="heroImg"
             />

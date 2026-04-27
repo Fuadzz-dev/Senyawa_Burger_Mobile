@@ -1,79 +1,42 @@
 package com.example.codecraftstudioapp;
 
-import android.content.Intent;
-import android.os.Bundle;
-import android.view.View;
-import android.widget.Button;
-import android.widget.ProgressBar;
-import android.widget.Toast;
-
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
-import com.example.codecraftstudioapp.models.Menu;
-import com.example.codecraftstudioapp.models.MenuResponse;
-import com.example.codecraftstudioapp.network.ApiClient;
-import com.example.codecraftstudioapp.network.ApiService;
-
-import java.util.ArrayList;
-import java.util.List;
-
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
+import android.os.Bundle;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
 public class MainActivity extends AppCompatActivity {
 
-    private RecyclerView rvMenu;
-    private MenuAdapter menuAdapter;
-    private ProgressBar progressBar;
-    private View cartBar;
+    private WebView webView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_menu);
 
-        rvMenu = findViewById(R.id.rvMenu);
-        progressBar = findViewById(R.id.progressBar);
-        cartBar = findViewById(R.id.cartBar);
+        webView = findViewById(R.id.webView);
 
-        rvMenu.setLayoutManager(new LinearLayoutManager(this));
+        // Konfigurasi WebSettings
+        WebSettings webSettings = webView.getSettings();
+        webSettings.setJavaScriptEnabled(true); // Wajib agar JS di web jalan
+        webSettings.setDomStorageEnabled(true); // Wajib agar localStorage jalan (untuk keranjang)
 
-        cartBar.setOnClickListener(v -> {
-            Intent intent = new Intent(MainActivity.this, KeranjangActivity.class);
-            startActivity(intent);
-        });
+        // Supaya tidak membuka browser eksternal ketika diklik link
+        webView.setWebViewClient(new WebViewClient());
 
-        fetchMenus();
+        // Load URL website Laravel (artisan serve port 8000)
+        // 10.0.2.2 digunakan untuk mengakses localhost dari Android Emulator
+        webView.loadUrl("http://10.0.2.2:8000/");
     }
 
-    private void fetchMenus() {
-        progressBar.setVisibility(View.VISIBLE);
-        ApiService apiService = ApiClient.getClient().create(ApiService.class);
-        Call<MenuResponse> call = apiService.getMenus();
-
-        call.enqueue(new Callback<MenuResponse>() {
-            @Override
-            public void onResponse(Call<MenuResponse> call, Response<MenuResponse> response) {
-                progressBar.setVisibility(View.GONE);
-                if (response.isSuccessful() && response.body() != null) {
-                    if (response.body().isSuccess()) {
-                        List<Menu> menus = response.body().getData().getMenus();
-                        menuAdapter = new MenuAdapter(MainActivity.this, menus);
-                        rvMenu.setAdapter(menuAdapter);
-                    } else {
-                        Toast.makeText(MainActivity.this, "Gagal meload data menu", Toast.LENGTH_SHORT).show();
-                    }
-                }
-            }
-
-            @Override
-            public void onFailure(Call<MenuResponse> call, Throwable t) {
-                progressBar.setVisibility(View.GONE);
-                Toast.makeText(MainActivity.this, "Error koneksi: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-            }
-        });
+    // Mengatasi tombol back di Android agar kembali ke history WebView bukan menutup aplikasi
+    @Override
+    public void onBackPressed() {
+        if (webView.canGoBack()) {
+            webView.goBack();
+        } else {
+            super.onBackPressed();
+        }
     }
 }
