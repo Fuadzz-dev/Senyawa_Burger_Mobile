@@ -28,7 +28,7 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView rvMenu;
     private MenuAdapter menuAdapter;
     private ProgressBar progressBar;
-    private Button btnCart;
+    private View cartBar;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,11 +37,11 @@ public class MainActivity extends AppCompatActivity {
 
         rvMenu = findViewById(R.id.rvMenu);
         progressBar = findViewById(R.id.progressBar);
-        btnCart = findViewById(R.id.btnCart);
+        cartBar = findViewById(R.id.cartBar);
 
         rvMenu.setLayoutManager(new LinearLayoutManager(this));
 
-        btnCart.setOnClickListener(v -> {
+        cartBar.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, KeranjangActivity.class);
             startActivity(intent);
         });
