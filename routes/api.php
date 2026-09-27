@@ -14,4 +14,7 @@ Route::prefix('customer')->group(function () {
     Route::post('/checkout', [CustomerApiController::class, 'checkout']);
     Route::get('/orders/{id}', [CustomerApiController::class, 'orderStatus']);
     Route::get('/orders', [CustomerApiController::class, 'orders']);
+    Route::patch('/orders/{id}', [CustomerApiController::class, 'updateOrder']);
+    Route::put('/orders/{id}', [CustomerApiController::class, 'updateOrder']);
+    Route::delete('/orders/{id}', [CustomerApiController::class, 'deleteOrder']);
 });

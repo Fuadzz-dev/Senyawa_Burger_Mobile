@@ -65,4 +65,8 @@ Route::prefix('api/customer')->group(function () {
     Route::get('/menus/{id}', [CustomerApiController::class, 'show']);
     Route::post('/checkout', [CustomerApiController::class, 'checkout']);
     Route::get('/orders/{id}', [CustomerApiController::class, 'orderStatus']);
+    Route::get('/orders', [CustomerApiController::class, 'orders']);
+    Route::patch('/orders/{id}', [CustomerApiController::class, 'updateOrder']);
+    Route::put('/orders/{id}', [CustomerApiController::class, 'updateOrder']);
+    Route::delete('/orders/{id}', [CustomerApiController::class, 'deleteOrder']);
 });
