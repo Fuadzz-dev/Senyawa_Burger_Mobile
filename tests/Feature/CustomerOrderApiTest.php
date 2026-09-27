@@ -215,4 +215,50 @@ class CustomerOrderApiTest extends TestCase
         $this->assertEquals(1, $order->total_pesanan);
         $this->assertEquals(20000, (float) $order->total_harga);
     }
+
+    public function test_customer_can_update_specific_item_in_order(): void
+    {
+        $menu = DB::table('menu')->insertGetId([
+            'nama_menu' => 'Burger G',
+            'harga' => 18000,
+            'Kategori' => 'Makanan',
+            'status_tersedia' => true,
+        ]);
+
+        $order = Pesanan::create([
+            'nama' => 'Eka',
+            'no_telepon' => '081122334488',
+            'email' => 'eka@example.com',
+            'total_harga' => 18000,
+            'total_pesanan' => 1,
+            'status_pembayaran' => 'Belum Lunas',
+        ]);
+
+        $detail = DetailPesanan::create([
+            'id_pesanan' => $order->id_pesanan,
+            'id_menu' => $menu,
+            'jumlah' => 1,
+            'harga_satuan' => 18000,
+            'kustomisasi' => 'Awal',
+        ]);
+
+        $response = $this->patchJson('/api/customer/orders/' . $order->id_pesanan . '/items/' . $detail->id_detail, [
+            'qty' => 3,
+            'harga_satuan' => 20000,
+            'kustomisasi' => 'Baru',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+        $this->assertDatabaseHas('detail_pesanan', [
+            'id_detail' => $detail->id_detail,
+            'jumlah' => 3,
+            'harga_satuan' => 20000,
+            'kustomisasi' => 'Baru',
+        ]);
+
+        $order->refresh();
+        $this->assertEquals(3, $order->total_pesanan);
+        $this->assertEquals(60000, (float) $order->total_harga);
+    }
 }

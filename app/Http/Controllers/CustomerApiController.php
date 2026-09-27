@@ -417,4 +417,58 @@ class CustomerApiController extends Controller
             ],
         ]);
     }
+
+    /**
+     * PATCH /api/customer/orders/{id}/items/{detail_id}
+     * Update satu item tertentu di dalam pesanan.
+     */
+    public function updateOrderItem(Request $request, $id, $detail_id)
+    {
+        $pesanan = Pesanan::with('detailPesanan')->findOrFail($id);
+        $detail = $pesanan->detailPesanan()->where('id_detail', $detail_id)->firstOrFail();
+
+        $request->validate([
+            'id_menu' => 'sometimes|integer|min:1',
+            'qty' => 'sometimes|integer|min:1',
+            'harga_satuan' => 'sometimes|numeric|min:0',
+            'kustomisasi' => 'sometimes|nullable|string',
+        ], [
+            'qty.integer' => 'Jumlah item harus berupa angka.',
+            'qty.min' => 'Jumlah item minimal 1.',
+            'harga_satuan.numeric' => 'Harga satuan harus berupa angka.',
+        ]);
+
+        if ($request->has('id_menu')) {
+            $detail->id_menu = (int) $request->id_menu;
+        }
+
+        if ($request->has('qty')) {
+            $detail->jumlah = (int) $request->qty;
+        }
+
+        if ($request->has('harga_satuan')) {
+            $detail->harga_satuan = (float) $request->harga_satuan;
+        }
+
+        if ($request->has('kustomisasi')) {
+            $detail->kustomisasi = $request->kustomisasi;
+        }
+
+        $detail->save();
+
+        $pesanan->total_pesanan = $pesanan->detailPesanan()->sum('jumlah');
+        $pesanan->total_harga = (float) $pesanan->detailPesanan()->sum(DB::raw('jumlah * harga_satuan'));
+        $pesanan->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Detail item pesanan berhasil diperbarui.',
+            'data' => [
+                'id_pesanan' => $pesanan->id_pesanan,
+                'detail' => $detail,
+                'total_pesanan' => $pesanan->total_pesanan,
+                'total_harga' => $pesanan->total_harga,
+            ],
+        ]);
+    }
 }

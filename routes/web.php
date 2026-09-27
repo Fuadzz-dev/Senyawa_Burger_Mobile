@@ -70,5 +70,7 @@ Route::prefix('api/customer')->group(function () {
     Route::put('/orders/{id}', [CustomerApiController::class, 'updateOrder']);
     Route::delete('/orders/{id}', [CustomerApiController::class, 'deleteOrder']);
     Route::post('/orders/{id}/items', [CustomerApiController::class, 'addOrderItem']);
+    Route::patch('/orders/{id}/items/{detail_id}', [CustomerApiController::class, 'updateOrderItem']);
+    Route::put('/orders/{id}/items/{detail_id}', [CustomerApiController::class, 'updateOrderItem']);
     Route::delete('/orders/{id}/items/{detail_id}', [CustomerApiController::class, 'deleteOrderItem']);
 });
