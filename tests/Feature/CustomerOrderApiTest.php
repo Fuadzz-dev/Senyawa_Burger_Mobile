@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\DetailPesanan;
 use App\Models\Pesanan;
+use Database\Seeders\MenuSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -260,5 +261,127 @@ class CustomerOrderApiTest extends TestCase
         $order->refresh();
         $this->assertEquals(3, $order->total_pesanan);
         $this->assertEquals(60000, (float) $order->total_harga);
+    }
+
+    public function test_customer_menu_endpoints_return_seeded_menu_data(): void
+    {
+        $this->artisan('db:seed', ['--class' => MenuSeeder::class])->assertOk();
+
+        $response = $this->getJson('/api/customer/menus');
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+        $response->assertJsonStructure([
+            'success',
+            'data' => [
+                '*' => ['id_menu', 'nama_menu', 'harga', 'Kategori', 'status_tersedia'],
+            ],
+        ]);
+
+        $menu = DB::table('menu')->where('status_tersedia', true)->first();
+        $this->assertNotNull($menu);
+
+        $detailResponse = $this->getJson('/api/customer/menus/' . $menu->id_menu);
+        $detailResponse->assertOk();
+        $detailResponse->assertJsonPath('success', true);
+        $detailResponse->assertJsonPath('data.id_menu', $menu->id_menu);
+    }
+
+    public function test_customer_can_post_specific_item_to_order(): void
+    {
+        $menu = DB::table('menu')->insertGetId([
+            'nama_menu' => 'Burger H',
+            'harga' => 22000,
+            'Kategori' => 'Makanan',
+            'status_tersedia' => true,
+        ]);
+
+        $order = Pesanan::create([
+            'nama' => 'Fajar',
+            'no_telepon' => '081122334499',
+            'email' => 'fajar@example.com',
+            'total_harga' => 0,
+            'total_pesanan' => 0,
+            'status_pembayaran' => 'Belum Lunas',
+        ]);
+
+        $detail = DetailPesanan::create([
+            'id_pesanan' => $order->id_pesanan,
+            'id_menu' => $menu,
+            'jumlah' => 1,
+            'harga_satuan' => 22000,
+            'kustomisasi' => 'Awal',
+        ]);
+
+        $response = $this->postJson('/api/customer/orders/' . $order->id_pesanan . '/items/' . $detail->id_detail, [
+            'id_menu' => $menu,
+            'qty' => 3,
+            'harga_satuan' => 24000,
+            'kustomisasi' => 'Pedas',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+        $response->assertJsonPath('message', 'Item pesanan berhasil diperbarui.');
+        $this->assertDatabaseHas('detail_pesanan', [
+            'id_detail' => $detail->id_detail,
+            'id_menu' => $menu,
+            'jumlah' => 3,
+            'harga_satuan' => 24000,
+            'kustomisasi' => 'Pedas',
+        ]);
+
+        $order->refresh();
+        $this->assertEquals(3, $order->total_pesanan);
+        $this->assertEquals(72000, (float) $order->total_harga);
+    }
+
+    public function test_customer_can_create_order_then_checkout_with_order_id(): void
+    {
+        $menu = DB::table('menu')->insertGetId([
+            'nama_menu' => 'Burger I',
+            'harga' => 25000,
+            'Kategori' => 'Makanan',
+            'status_tersedia' => true,
+        ]);
+
+        $createResponse = $this->postJson('/api/customer/orders', [
+            'nama' => 'Gilang',
+            'phone' => '081234567890',
+            'email' => 'gilang@example.com',
+            'catatan' => 'Tanpa mayones',
+            'items' => [
+                [
+                    'id_menu' => $menu,
+                    'qty' => 2,
+                    'harga_satuan' => 25000,
+                    'kustomisasi' => 'Pedas',
+                ],
+            ],
+        ]);
+
+        $createResponse->assertStatus(201);
+        $createResponse->assertJsonPath('success', true);
+        $this->assertNotNull($createResponse->json('data.id_pesanan'));
+
+        $orderId = $createResponse->json('data.id_pesanan');
+
+        $checkoutResponse = $this->postJson('/api/customer/checkout', [
+            'order_id' => $orderId,
+            'nama' => 'Gilang',
+            'phone' => '081234567890',
+            'email' => 'gilang@example.com',
+            'amount' => 50000,
+            'paymentMethod' => 'kasir',
+            'catatan' => 'Tanpa mayones',
+        ]);
+
+        $checkoutResponse->assertStatus(200);
+        $checkoutResponse->assertJsonPath('success', true);
+        $checkoutResponse->assertJsonPath('data.id_pesanan', $orderId);
+        $this->assertDatabaseHas('pesanan', [
+            'id_pesanan' => $orderId,
+            'status_pembayaran' => 'Belum Lunas',
+            'catatan' => 'Tanpa mayones',
+        ]);
     }
 }

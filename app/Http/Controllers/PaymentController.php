@@ -29,7 +29,7 @@ class PaymentController extends Controller
     {
         $request->validate([
             'nama' => 'required|string|max:255',
-            'phone' => ['required', 'regex:/^(\+62|08)[0-9]{8,13}$/'],
+            'phone' => ['required', 'regex:/^(?:\+62|08)[0-9]{8,13}$/'],
             'email' => 'required|email:rfc,dns',
         ], [
             'nama.required' => 'Nama lengkap wajib diisi.',
@@ -41,12 +41,21 @@ class PaymentController extends Controller
         ]);
 
         $method = $request->input('paymentMethod');
-        $cart = $request->input('cart', []);
-        $nama = $request->input('nama');
-        $phone = $request->input('phone');
-        $email = $request->input('email');
-        $amount = $request->input('amount');
-        $catatan = $request->input('catatan');
+        $orderId = $request->input('order_id');
+        $pesanan = $orderId ? Pesanan::with('detailPesanan')->find($orderId) : null;
+        $cart = $request->input('cart', $pesanan ? $pesanan->detailPesanan->map(function ($detail) {
+            return [
+                'id' => $detail->id_menu,
+                'qty' => (int) $detail->jumlah,
+                'price' => (float) $detail->harga_satuan * (int) $detail->jumlah,
+                'notes' => $detail->kustomisasi,
+            ];
+        })->values()->all() : []);
+        $nama = $request->input('nama', $pesanan?->nama);
+        $phone = $request->input('phone', $pesanan?->no_telepon);
+        $email = $request->input('email', $pesanan?->email);
+        $amount = $request->input('amount', $pesanan?->total_harga);
+        $catatan = $request->input('catatan', $pesanan?->catatan);
 
         if (empty($cart) || !$amount) {
             return response()->json(['success' => false, 'message' => 'Data pesanan tidak lengkap'], 400);
@@ -59,15 +68,25 @@ class PaymentController extends Controller
 
         // Jika metode Bayar di Kasir, TETAP langsung masuk ke Database (karena tidak perlu QRIS)
         if ($method === 'kasir') {
-            $pesanan = new Pesanan();
-            $pesanan->nama = $nama;
-            $pesanan->no_telepon = $phone;
-            $pesanan->email = $email;
-            $pesanan->total_harga = $amount;
-            $pesanan->total_pesanan = $totalPesanan;
-            $pesanan->catatan = $catatan;
-            $pesanan->status_pembayaran = 'Belum Lunas';
-            $pesanan->save();
+            if ($pesanan) {
+                $pesanan->nama = $nama;
+                $pesanan->no_telepon = $phone;
+                $pesanan->email = $email;
+                $pesanan->total_harga = $amount;
+                $pesanan->total_pesanan = $totalPesanan;
+                $pesanan->catatan = $catatan;
+                $pesanan->save();
+            } else {
+                $pesanan = new Pesanan();
+                $pesanan->nama = $nama;
+                $pesanan->no_telepon = $phone;
+                $pesanan->email = $email;
+                $pesanan->total_harga = $amount;
+                $pesanan->total_pesanan = $totalPesanan;
+                $pesanan->catatan = $catatan;
+                $pesanan->status_pembayaran = 'Belum Lunas';
+                $pesanan->save();
+            }
 
             Mail::to($pesanan->email)->send(new StrukMail($pesanan));
 

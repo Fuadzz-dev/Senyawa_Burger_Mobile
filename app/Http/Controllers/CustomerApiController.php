@@ -49,26 +49,291 @@ class CustomerApiController extends Controller
     }
 
     /**
-     * POST /api/customer/checkout
-     * Membuat pesanan pelanggan dari cart.
+     * POST /api/customer/orders
+     * Membuat order terlebih dahulu sebelum checkout.
      */
-    public function checkout(Request $request)
+    public function createOrder(Request $request)
     {
         $request->validate([
             'nama' => 'required|string|max:255',
-            'phone' => ['required', 'regex:/^(\+62|08)[0-9]{8,13}$/'],
+            'phone' => ['required', 'regex:/^(?:\+62|08)[0-9]{8,13}$/'],
             'email' => 'required|email',
-            'cart' => 'required|array|min:1',
-            'amount' => 'required|numeric|min:1',
+            'items' => 'required|array|min:1',
         ], [
             'nama.required' => 'Nama pelanggan wajib diisi.',
             'phone.required' => 'Nomor telepon wajib diisi.',
             'phone.regex' => 'Format nomor telepon tidak valid.',
             'email.required' => 'Email wajib diisi.',
             'email.email' => 'Format email tidak valid.',
-            'cart.required' => 'Keranjang pesanan tidak boleh kosong.',
-            'amount.required' => 'Total pembayaran wajib diisi.',
+            'items.required' => 'Item pesanan tidak boleh kosong.',
+            'items.min' => 'Item pesanan tidak boleh kosong.',
         ]);
+
+        $items = $request->input('items', []);
+        $nama = $request->input('nama');
+        $phone = $request->input('phone');
+        $email = $request->input('email');
+        $catatan = $request->input('catatan');
+
+        $totalPesanan = 0;
+        $totalHarga = 0;
+
+        foreach ($items as $item) {
+            $qty = (int) ($item['qty'] ?? 0);
+            $hargaSatuan = (float) ($item['harga_satuan'] ?? 0);
+            $totalPesanan += $qty;
+            $totalHarga += $qty * $hargaSatuan;
+        }
+
+        $pesanan = DB::transaction(function () use ($nama, $phone, $email, $catatan, $items, $totalPesanan, $totalHarga) {
+            $newPesanan = Pesanan::create([
+                'nama' => $nama,
+                'no_telepon' => $phone,
+                'email' => $email,
+                'total_harga' => $totalHarga,
+                'total_pesanan' => $totalPesanan,
+                'status_pembayaran' => 'Belum Lunas',
+                'catatan' => $catatan,
+            ]);
+
+            foreach ($items as $item) {
+                DetailPesanan::create([
+                    'id_pesanan' => $newPesanan->id_pesanan,
+                    'id_menu' => $item['id_menu'] ?? $item['id'],
+                    'jumlah' => (int) ($item['qty'] ?? 0),
+                    'harga_satuan' => (float) ($item['harga_satuan'] ?? 0),
+                    'kustomisasi' => $item['kustomisasi'] ?? $item['notes'] ?? $item['note'] ?? null,
+                ]);
+            }
+
+            return $newPesanan;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order berhasil dibuat. Silakan lanjut ke proses checkout.',
+            'data' => [
+                'id_pesanan' => $pesanan->id_pesanan,
+                'total_pesanan' => $pesanan->total_pesanan,
+                'total_harga' => $pesanan->total_harga,
+                'status_pembayaran' => $pesanan->status_pembayaran,
+            ],
+        ], 201);
+    }
+
+    /**
+     * PATCH /api/customer/orders/{id}
+     * Update data order dan item-itemnya.
+     */
+    public function updateOrder(Request $request, $id)
+    {
+        $pesanan = Pesanan::with('detailPesanan')->findOrFail($id);
+
+        $request->validate([
+            'nama' => 'sometimes|string|max:255',
+            'phone' => ['sometimes', 'regex:/^(?:\+62|08)[0-9]{8,13}$/'],
+            'email' => 'sometimes|email',
+            'catatan' => 'sometimes|nullable|string',
+            'status_pembayaran' => 'sometimes|string',
+            'items' => 'sometimes|array',
+        ]);
+
+        if ($request->has('nama')) {
+            $pesanan->nama = $request->input('nama');
+        }
+
+        if ($request->has('phone')) {
+            $pesanan->no_telepon = $request->input('phone');
+        }
+
+        if ($request->has('email')) {
+            $pesanan->email = $request->input('email');
+        }
+
+        if ($request->has('catatan')) {
+            $pesanan->catatan = $request->input('catatan');
+        }
+
+        if ($request->has('status_pembayaran')) {
+            $pesanan->status_pembayaran = $request->input('status_pembayaran');
+        }
+
+        if ($request->has('items')) {
+            $items = $request->input('items', []);
+            $pesanan->detailPesanan()->delete();
+
+            $totalPesanan = 0;
+            $totalHarga = 0;
+
+            foreach ($items as $item) {
+                $qty = (int) ($item['qty'] ?? 0);
+                $hargaSatuan = (float) ($item['harga_satuan'] ?? 0);
+                $totalPesanan += $qty;
+                $totalHarga += $qty * $hargaSatuan;
+
+                $pesanan->detailPesanan()->create([
+                    'id_menu' => $item['id_menu'] ?? $item['id'],
+                    'jumlah' => $qty,
+                    'harga_satuan' => $hargaSatuan,
+                    'kustomisasi' => $item['kustomisasi'] ?? $item['notes'] ?? $item['note'] ?? null,
+                ]);
+            }
+
+            $pesanan->total_pesanan = $totalPesanan;
+            $pesanan->total_harga = $totalHarga;
+        }
+
+        $pesanan->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order berhasil diperbarui.',
+            'data' => [
+                'id_pesanan' => $pesanan->id_pesanan,
+                'total_pesanan' => $pesanan->total_pesanan,
+                'total_harga' => $pesanan->total_harga,
+            ],
+        ]);
+    }
+
+    /**
+     * DELETE /api/customer/orders/{id}
+     * Hapus order beserta detailnya.
+     */
+    public function deleteOrder($id)
+    {
+        $pesanan = Pesanan::with('detailPesanan')->findOrFail($id);
+        $pesanan->detailPesanan()->delete();
+        $pesanan->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order berhasil dihapus.',
+        ]);
+    }
+
+    /**
+     * POST /api/customer/checkout
+     * Membuat pesanan pelanggan dari cart atau order yang sudah dibuat.
+     */
+    public function checkout(Request $request)
+    {
+        $request->validate([
+            'order_id' => 'nullable|integer|min:1',
+            'nama' => 'required_without:order_id|string|max:255',
+            'phone' => ['required_without:order_id', 'regex:/^(?:\+62|08)[0-9]{8,13}$/'],
+            'email' => 'required_without:order_id|email',
+            'cart' => 'nullable|array|min:1',
+            'amount' => 'nullable|numeric|min:1',
+        ], [
+            'nama.required_without' => 'Nama pelanggan wajib diisi.',
+            'phone.required_without' => 'Nomor telepon wajib diisi.',
+            'phone.regex' => 'Format nomor telepon tidak valid.',
+            'email.required_without' => 'Email wajib diisi.',
+            'email.email' => 'Format email tidak valid.',
+            'cart.min' => 'Keranjang pesanan tidak boleh kosong.',
+            'amount.min' => 'Total pembayaran wajib diisi.',
+        ]);
+
+        $orderId = $request->input('order_id');
+        $paymentMethod = $request->input('paymentMethod', 'online');
+
+        $pesanan = null;
+        if ($orderId) {
+            $pesanan = Pesanan::with('detailPesanan')->find($orderId);
+            if (! $pesanan) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order tidak ditemukan.',
+                ], 404);
+            }
+        }
+
+        $nama = $request->input('nama', $pesanan?->nama);
+        $phone = $request->input('phone', $pesanan?->no_telepon);
+        $email = $request->input('email', $pesanan?->email);
+        $catatan = $request->input('catatan', $pesanan?->catatan);
+        $cart = $request->input('cart', $pesanan?->detailPesanan->map(function ($detail) {
+            return [
+                'id' => $detail->id_menu,
+                'qty' => (int) $detail->jumlah,
+                'price' => (float) $detail->harga_satuan * (int) $detail->jumlah,
+                'notes' => $detail->kustomisasi,
+            ];
+        })->values()->all() ?? []);
+
+        if (empty($cart) && ! $pesanan) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Keranjang pesanan tidak boleh kosong.',
+            ], 400);
+        }
+
+        $amount = (float) ($request->input('amount') ?? $pesanan?->total_harga ?? 0);
+
+        if (! $pesanan) {
+            $merchantCode = env('DUITKU_MERCHANT_CODE');
+            $apiKey = env('DUITKU_API_KEY');
+
+            if (! $merchantCode || ! $apiKey) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Konfigurasi Duitku belum diset. Isi DUITKU_MERCHANT_CODE dan DUITKU_API_KEY di file .env.',
+                ], 500);
+            }
+
+            $totalPesanan = 0;
+            foreach ($cart as $item) {
+                $totalPesanan += (int) ($item['qty'] ?? 0);
+            }
+
+            $reference = 'SB-' . time() . '-' . Str::upper(Str::random(6));
+
+            $pesanan = DB::transaction(function () use ($nama, $phone, $email, $amount, $catatan, $cart, $reference, $totalPesanan) {
+                $newPesanan = Pesanan::create([
+                    'nama' => $nama,
+                    'no_telepon' => $phone,
+                    'email' => $email,
+                    'total_harga' => $amount,
+                    'total_pesanan' => $totalPesanan,
+                    'status_pembayaran' => 'Belum Lunas',
+                    'payment_reference' => $reference,
+                    'catatan' => $catatan,
+                ]);
+
+                foreach ($cart as $item) {
+                    DetailPesanan::create([
+                        'id_pesanan' => $newPesanan->id_pesanan,
+                        'id_menu' => $item['id'],
+                        'jumlah' => (int) ($item['qty'] ?? 0),
+                        'harga_satuan' => (float) ($item['price'] ?? 0),
+                        'kustomisasi' => $item['notes'] ?? $item['note'] ?? null,
+                    ]);
+                }
+
+                return $newPesanan;
+            });
+        } else {
+            $pesanan->nama = $nama;
+            $pesanan->no_telepon = $phone;
+            $pesanan->email = $email;
+            $pesanan->catatan = $catatan;
+            $pesanan->total_harga = $amount ?: $pesanan->total_harga;
+            $pesanan->save();
+        }
+
+        if (strtolower((string) $paymentMethod) === 'kasir') {
+            return response()->json([
+                'success' => true,
+                'message' => 'Pesanan berhasil dibuat. Silakan bayar di kasir.',
+                'data' => [
+                    'id_pesanan' => $pesanan->id_pesanan,
+                    'status_pembayaran' => $pesanan->status_pembayaran,
+                    'payment_method' => 'kasir',
+                    'order_id' => $pesanan->id_pesanan,
+                ],
+            ], 200);
+        }
 
         $merchantCode = env('DUITKU_MERCHANT_CODE');
         $apiKey = env('DUITKU_API_KEY');
@@ -80,58 +345,7 @@ class CustomerApiController extends Controller
             ], 500);
         }
 
-        $cart = $request->input('cart', []);
-        $nama = $request->input('nama');
-        $phone = $request->input('phone');
-        $email = $request->input('email');
-        $amount = (float) $request->input('amount');
-        $catatan = $request->input('catatan');
-        $paymentMethod = $request->input('paymentMethod', 'online');
-
-        $totalPesanan = 0;
-        foreach ($cart as $item) {
-            $totalPesanan += (int) ($item['qty'] ?? 0);
-        }
-
-        $reference = 'SB-' . time() . '-' . Str::upper(Str::random(6));
-
-        $pesanan = DB::transaction(function () use ($nama, $phone, $email, $amount, $catatan, $cart, $reference, $totalPesanan) {
-            $newPesanan = Pesanan::create([
-                'nama' => $nama,
-                'no_telepon' => $phone,
-                'email' => $email,
-                'total_harga' => $amount,
-                'total_pesanan' => $totalPesanan,
-                'status_pembayaran' => 'Belum Lunas',
-                'payment_reference' => $reference,
-                'catatan' => $catatan,
-            ]);
-
-            foreach ($cart as $item) {
-                DetailPesanan::create([
-                    'id_pesanan' => $newPesanan->id_pesanan,
-                    'id_menu' => $item['id'],
-                    'jumlah' => (int) ($item['qty'] ?? 0),
-                    'harga_satuan' => (float) ($item['price'] ?? 0),
-                    'kustomisasi' => $item['notes'] ?? $item['note'] ?? null,
-                ]);
-            }
-
-            return $newPesanan;
-        });
-
-        if (strtolower((string) $paymentMethod) === 'kasir') {
-            return response()->json([
-                'success' => true,
-                'message' => 'Pesanan berhasil dibuat. Silakan bayar di kasir.',
-                'data' => [
-                    'id_pesanan' => $pesanan->id_pesanan,
-                    'status_pembayaran' => $pesanan->status_pembayaran,
-                    'payment_method' => 'kasir',
-                ],
-            ], 201);
-        }
-
+        $reference = $pesanan->payment_reference ?: 'SB-' . time() . '-' . Str::upper(Str::random(6));
         $merchantOrderId = $reference;
         $signature = md5($merchantCode . $merchantOrderId . $amount . $apiKey);
         $callbackUrl = url('/api/duitku/callback');
@@ -167,6 +381,7 @@ class CustomerApiController extends Controller
             'message' => 'Pesanan berhasil dibuat. Silakan lanjut ke pembayaran.',
             'data' => [
                 'id_pesanan' => $pesanan->id_pesanan,
+                'order_id' => $pesanan->id_pesanan,
                 'payment_reference' => $reference,
                 'qrString' => $duitkuResponse['qrString'],
                 'payment_method' => 'online',
@@ -174,177 +389,6 @@ class CustomerApiController extends Controller
                 'total_harga' => $pesanan->total_harga,
             ],
         ], 201);
-    }
-
-    /**
-     * GET /api/customer/orders/{id}
-     * Cek status pesanan pelanggan.
-     */
-    public function orderStatus($id)
-    {
-        $pesanan = Pesanan::with('detailPesanan.menu')->find($id);
-
-        if (! $pesanan) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Pesanan tidak ditemukan.',
-            ], 404);
-        }
-
-        foreach ($pesanan->detailPesanan as $detail) {
-            if ($detail->menu) {
-                $detail->menu->makeHidden('foto');
-            }
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $pesanan,
-        ]);
-    }
-
-    /**
-     * GET /api/customer/orders?phone=08xxx
-     * Melihat riwayat pesanan berdasarkan nomor telepon pelanggan.
-     */
-    public function orders(Request $request)
-    {
-        $request->validate([
-            'phone' => ['required_without:email', 'regex:/^(\+62|08)[0-9]{8,13}$/'],
-            'email' => 'required_without:phone|email',
-        ], [
-            'phone.regex' => 'Format nomor telepon tidak valid.',
-            'email.email' => 'Format email tidak valid.',
-        ]);
-
-        $query = Pesanan::query();
-
-        if ($request->filled('phone')) {
-            $query->where('no_telepon', $request->phone);
-        }
-
-        if ($request->filled('email')) {
-            $query->where('email', $request->email);
-        }
-
-        $orders = $query->with('detailPesanan.menu')->orderByDesc('id_pesanan')->get();
-
-        foreach ($orders as $pesanan) {
-            foreach ($pesanan->detailPesanan as $detail) {
-                if ($detail->menu) {
-                    $detail->menu->makeHidden('foto');
-                }
-            }
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $orders,
-        ]);
-    }
-
-    /**
-     * PATCH /api/customer/orders/{id}
-     * Update data pesanan utama dan item detailnya.
-     */
-    public function updateOrder(Request $request, $id)
-    {
-        $pesanan = Pesanan::findOrFail($id);
-
-        $request->validate([
-            'nama' => 'sometimes|string|max:255',
-            'phone' => ['sometimes', 'nullable', 'regex:/^(\+62|08)[0-9]{8,13}$/'],
-            'email' => ['sometimes', 'nullable', 'email'],
-            'catatan' => 'sometimes|nullable|string',
-            'status_pembayaran' => 'sometimes|in:Lunas,Belum Lunas',
-            'items' => 'sometimes|array',
-            'items.*.id_menu' => 'required_with:items|integer|min:1',
-            'items.*.qty' => 'required_with:items|integer|min:1',
-            'items.*.harga_satuan' => 'required_with:items|numeric|min:0',
-        ], [
-            'phone.regex' => 'Format nomor telepon tidak valid.',
-            'email.email' => 'Format email tidak valid.',
-            'status_pembayaran.in' => 'Status pembayaran harus Lunas atau Belum Lunas.',
-            'items.*.id_menu.required_with' => 'ID menu wajib diisi untuk setiap item.',
-            'items.*.qty.required_with' => 'Jumlah item wajib diisi.',
-            'items.*.harga_satuan.required_with' => 'Harga satuan item wajib diisi.',
-        ]);
-
-        $payload = [
-            'nama' => $request->input('nama', $pesanan->nama),
-            'no_telepon' => $request->input('phone', $pesanan->no_telepon),
-            'email' => $request->input('email', $pesanan->email),
-            'catatan' => $request->input('catatan', $pesanan->catatan),
-        ];
-
-        if ($request->has('status_pembayaran')) {
-            $payload['status_pembayaran'] = $request->input('status_pembayaran');
-        }
-
-        $pesanan->fill($payload);
-
-        if ($request->has('items')) {
-            $items = $request->input('items', []);
-
-            $totalQty = 0;
-            $totalHarga = 0;
-            $newDetails = [];
-
-            foreach ($items as $item) {
-                $qty = (int) ($item['qty'] ?? 0);
-                $unitPrice = (float) ($item['harga_satuan'] ?? ($item['price'] ?? 0));
-                $totalQty += $qty;
-                $totalHarga += $qty * $unitPrice;
-
-                $newDetails[] = [
-                    'id_menu' => (int) ($item['id_menu'] ?? $item['id']),
-                    'jumlah' => $qty,
-                    'harga_satuan' => $unitPrice,
-                    'kustomisasi' => $item['kustomisasi'] ?? $item['notes'] ?? $item['note'] ?? null,
-                ];
-            }
-
-            $pesanan->total_pesanan = $totalQty;
-            $pesanan->total_harga = $totalHarga;
-            $pesanan->detailPesanan()->delete();
-
-            foreach ($newDetails as $detail) {
-                $pesanan->detailPesanan()->create($detail);
-            }
-        }
-
-        $pesanan->save();
-
-        $pesanan->load('detailPesanan.menu');
-
-        foreach ($pesanan->detailPesanan as $detail) {
-            if ($detail->menu) {
-                $detail->menu->makeHidden('foto');
-            }
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Pesanan berhasil diperbarui.',
-            'data' => $pesanan,
-        ]);
-    }
-
-    /**
-     * DELETE /api/customer/orders/{id}
-     * Hapus pesanan beserta detail-itemnya.
-     */
-    public function deleteOrder($id)
-    {
-        $pesanan = Pesanan::with('detailPesanan')->findOrFail($id);
-
-        $pesanan->detailPesanan()->delete();
-        $pesanan->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Pesanan berhasil dihapus.',
-        ]);
     }
 
     /**
@@ -378,8 +422,6 @@ class CustomerApiController extends Controller
         $pesanan->total_harga = (float) $pesanan->detailPesanan()->sum(DB::raw('jumlah * harga_satuan'));
         $pesanan->save();
 
-        $pesanan->load('detailPesanan.menu');
-
         return response()->json([
             'success' => true,
             'message' => 'Item berhasil ditambahkan ke pesanan.',
@@ -390,6 +432,62 @@ class CustomerApiController extends Controller
                 'total_harga' => $pesanan->total_harga,
             ],
         ], 201);
+    }
+
+    /**
+     * POST /api/customer/orders/{id}/items/{detail_id}
+     * Tambah atau update item tertentu dalam pesanan berdasarkan id detail.
+     */
+    public function upsertOrderItem(Request $request, $id, $detail_id)
+    {
+        $pesanan = Pesanan::findOrFail($id);
+
+        $request->validate([
+            'id_menu' => 'required|integer|min:1',
+            'qty' => 'required|integer|min:1',
+            'harga_satuan' => 'nullable|numeric|min:0',
+            'kustomisasi' => 'nullable|string',
+        ], [
+            'id_menu.required' => 'ID menu wajib diisi.',
+            'qty.required' => 'Jumlah item wajib diisi.',
+            'qty.integer' => 'Jumlah item harus berupa angka.',
+            'harga_satuan.numeric' => 'Harga satuan harus berupa angka.',
+        ]);
+
+        $detail = $pesanan->detailPesanan()->where('id_detail', $detail_id)->first();
+
+        if ($detail) {
+            $detail->id_menu = (int) $request->id_menu;
+            $detail->jumlah = (int) $request->qty;
+            $detail->harga_satuan = (float) ($request->harga_satuan ?? $detail->harga_satuan);
+            $detail->kustomisasi = $request->input('kustomisasi', $detail->kustomisasi);
+            $detail->save();
+            $message = 'Item pesanan berhasil diperbarui.';
+        } else {
+            $detail = $pesanan->detailPesanan()->create([
+                'id_menu' => (int) $request->id_menu,
+                'jumlah' => (int) $request->qty,
+                'harga_satuan' => (float) ($request->harga_satuan ?? 0),
+                'kustomisasi' => $request->kustomisasi,
+            ]);
+            $message = 'Item pesanan berhasil ditambahkan.';
+        }
+
+        $pesanan->total_pesanan = $pesanan->detailPesanan()->sum('jumlah');
+        $pesanan->total_harga = (float) $pesanan->detailPesanan()->sum(DB::raw('jumlah * harga_satuan'));
+        $pesanan->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'data' => [
+                'id_pesanan' => $pesanan->id_pesanan,
+                'id_detail' => $detail->id_detail,
+                'item' => $detail,
+                'total_pesanan' => $pesanan->total_pesanan,
+                'total_harga' => $pesanan->total_harga,
+            ],
+        ], $detail->wasRecentlyCreated ? 201 : 200);
     }
 
     /**
@@ -471,4 +569,32 @@ class CustomerApiController extends Controller
             ],
         ]);
     }
+
+    /**
+     * GET /api/customer/orders/{id}
+     * Cek status pesanan pelanggan.
+     */
+    public function orderStatus($id)
+    {
+        $pesanan = Pesanan::with('detailPesanan.menu')->find($id);
+
+        if (! $pesanan) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pesanan tidak ditemukan.',
+            ], 404);
+        }
+
+        foreach ($pesanan->detailPesanan as $detail) {
+            if ($detail->menu) {
+                $detail->menu->makeHidden('foto');
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $pesanan,
+        ]);
+    }
+
 }
