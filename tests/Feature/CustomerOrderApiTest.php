@@ -116,4 +116,103 @@ class CustomerOrderApiTest extends TestCase
         $this->assertDatabaseMissing('pesanan', ['id_pesanan' => $order->id_pesanan]);
         $this->assertDatabaseMissing('detail_pesanan', ['id_pesanan' => $order->id_pesanan]);
     }
+
+    public function test_customer_can_add_item_to_existing_order(): void
+    {
+        $menu = DB::table('menu')->insertGetId([
+            'nama_menu' => 'Burger D',
+            'harga' => 18000,
+            'Kategori' => 'Makanan',
+            'status_tersedia' => true,
+        ]);
+
+        $order = Pesanan::create([
+            'nama' => 'Citra',
+            'no_telepon' => '081122334466',
+            'email' => 'citra@example.com',
+            'total_harga' => 20000,
+            'total_pesanan' => 1,
+            'status_pembayaran' => 'Belum Lunas',
+        ]);
+
+        DetailPesanan::create([
+            'id_pesanan' => $order->id_pesanan,
+            'id_menu' => $menu,
+            'jumlah' => 1,
+            'harga_satuan' => 20000,
+            'kustomisasi' => 'Tidak pedas',
+        ]);
+
+        $response = $this->postJson('/api/customer/orders/' . $order->id_pesanan . '/items', [
+            'id_menu' => $menu,
+            'qty' => 2,
+            'harga_satuan' => 18000,
+            'kustomisasi' => 'Pedas',
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('success', true);
+        $this->assertDatabaseHas('detail_pesanan', [
+            'id_pesanan' => $order->id_pesanan,
+            'id_menu' => $menu,
+            'jumlah' => 2,
+            'kustomisasi' => 'Pedas',
+        ]);
+
+        $order->refresh();
+        $this->assertEquals(3, $order->total_pesanan);
+        $this->assertEquals(56000, (float) $order->total_harga);
+    }
+
+    public function test_customer_can_delete_specific_item_from_order(): void
+    {
+        $menuA = DB::table('menu')->insertGetId([
+            'nama_menu' => 'Burger E',
+            'harga' => 15000,
+            'Kategori' => 'Makanan',
+            'status_tersedia' => true,
+        ]);
+
+        $menuB = DB::table('menu')->insertGetId([
+            'nama_menu' => 'Burger F',
+            'harga' => 20000,
+            'Kategori' => 'Makanan',
+            'status_tersedia' => true,
+        ]);
+
+        $order = Pesanan::create([
+            'nama' => 'Dinda',
+            'no_telepon' => '081122334477',
+            'email' => 'dinda@example.com',
+            'total_harga' => 35000,
+            'total_pesanan' => 2,
+            'status_pembayaran' => 'Belum Lunas',
+        ]);
+
+        $detailA = DetailPesanan::create([
+            'id_pesanan' => $order->id_pesanan,
+            'id_menu' => $menuA,
+            'jumlah' => 1,
+            'harga_satuan' => 15000,
+            'kustomisasi' => 'Tanpa timun',
+        ]);
+
+        $detailB = DetailPesanan::create([
+            'id_pesanan' => $order->id_pesanan,
+            'id_menu' => $menuB,
+            'jumlah' => 1,
+            'harga_satuan' => 20000,
+            'kustomisasi' => 'Extra keju',
+        ]);
+
+        $response = $this->deleteJson('/api/customer/orders/' . $order->id_pesanan . '/items/' . $detailA->id_detail);
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+        $this->assertDatabaseMissing('detail_pesanan', ['id_detail' => $detailA->id_detail]);
+
+        $order->refresh();
+        $this->assertEquals(1, $order->total_pesanan);
+        $this->assertEquals(20000, (float) $order->total_harga);
+    }
 }

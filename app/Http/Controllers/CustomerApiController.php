@@ -346,4 +346,75 @@ class CustomerApiController extends Controller
             'message' => 'Pesanan berhasil dihapus.',
         ]);
     }
+
+    /**
+     * POST /api/customer/orders/{id}/items
+     * Tambah satu item ke pesanan yang sudah ada.
+     */
+    public function addOrderItem(Request $request, $id)
+    {
+        $pesanan = Pesanan::findOrFail($id);
+
+        $request->validate([
+            'id_menu' => 'required|integer|min:1',
+            'qty' => 'required|integer|min:1',
+            'harga_satuan' => 'nullable|numeric|min:0',
+            'kustomisasi' => 'nullable|string',
+        ], [
+            'id_menu.required' => 'ID menu wajib diisi.',
+            'qty.required' => 'Jumlah item wajib diisi.',
+            'qty.integer' => 'Jumlah item harus berupa angka.',
+            'harga_satuan.numeric' => 'Harga satuan harus berupa angka.',
+        ]);
+
+        $detail = $pesanan->detailPesanan()->create([
+            'id_menu' => (int) $request->id_menu,
+            'jumlah' => (int) $request->qty,
+            'harga_satuan' => (float) ($request->harga_satuan ?? 0),
+            'kustomisasi' => $request->kustomisasi,
+        ]);
+
+        $pesanan->total_pesanan = $pesanan->detailPesanan()->sum('jumlah');
+        $pesanan->total_harga = (float) $pesanan->detailPesanan()->sum(DB::raw('jumlah * harga_satuan'));
+        $pesanan->save();
+
+        $pesanan->load('detailPesanan.menu');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Item berhasil ditambahkan ke pesanan.',
+            'data' => [
+                'id_pesanan' => $pesanan->id_pesanan,
+                'item' => $detail,
+                'total_pesanan' => $pesanan->total_pesanan,
+                'total_harga' => $pesanan->total_harga,
+            ],
+        ], 201);
+    }
+
+    /**
+     * DELETE /api/customer/orders/{id}/items/{detail_id}
+     * Hapus satu item dari detail pesanan.
+     */
+    public function deleteOrderItem($id, $detail_id)
+    {
+        $pesanan = Pesanan::with('detailPesanan')->findOrFail($id);
+        $detail = $pesanan->detailPesanan()->where('id_detail', $detail_id)->firstOrFail();
+
+        $detail->delete();
+
+        $pesanan->total_pesanan = $pesanan->detailPesanan()->sum('jumlah');
+        $pesanan->total_harga = (float) $pesanan->detailPesanan()->sum(DB::raw('jumlah * harga_satuan'));
+        $pesanan->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Item pesanan berhasil dihapus.',
+            'data' => [
+                'id_pesanan' => $pesanan->id_pesanan,
+                'total_pesanan' => $pesanan->total_pesanan,
+                'total_harga' => $pesanan->total_harga,
+            ],
+        ]);
+    }
 }
