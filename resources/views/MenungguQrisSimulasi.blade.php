@@ -115,8 +115,6 @@
         font-family: "Nunito", sans-serif;
         background: var(--cream);
         color: var(--dark);
-        max-width: 480px;
-        margin: 0 auto;
         min-height: 100vh;
         overflow-x: hidden;
         padding-bottom: 60px;
@@ -140,7 +138,13 @@
         letter-spacing: 2px;
     }
 
-    .section { padding: 18px 16px 0; animation: fadeUp 0.4s ease both; }
+    .section {
+        width: 100%;
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 18px 16px 0;
+        animation: fadeUp 0.4s ease both;
+    }
 
     @keyframes fadeUp {
         from { opacity: 0; transform: translateY(16px); }

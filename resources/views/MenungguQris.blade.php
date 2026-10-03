@@ -239,8 +239,6 @@
         font-family: "Nunito", sans-serif;
         background: var(--cream);
         color: var(--text);
-        max-width: 480px;
-        margin: 0 auto;
         min-height: 100vh;
         overflow-x: hidden;
         padding-bottom: 50px;
@@ -267,6 +265,10 @@
     .section {
         padding: 18px 16px 0;
         animation: fadeUp 0.4s ease both;
+        width: 100%;
+        max-width: 760px;
+        margin-left: auto;
+        margin-right: auto;
     }
     @keyframes fadeUp {
         from {

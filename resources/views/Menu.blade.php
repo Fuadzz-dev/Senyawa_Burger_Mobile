@@ -10,64 +10,33 @@
         />
     </head>
 
-    <body>
-        <!-- HERO -->
-        <div class="hero">
-            <img class="picSen" src="/senyawa.png" alt="senyawa">
-            </div>
-        </div>
-
-        <!-- SEARCH OVERLAY -->
-        <div class="search-overlay" id="searchOverlay">
-            <div class="search-box">
-                <input
-                    type="text"
-                    id="searchInput"
-                    placeholder="Cari menu..."
-                    autocomplete="off"
-                />
-            </div>
-        </div>
-
-        <!-- CATEGORY TABS -->
-        <nav class="tabs">
-            @foreach ($kategoriList as $index => $kat)
-                <button class="tab-btn {{ $index === 0 ? 'active' : '' }}" data-tab="{{ $kat }}">
-                    {{ strtoupper($kat) }}
-                </button>
-            @endforeach
-        </nav>
-
+    <body>  
         <!-- MENU SECTIONS (dari database) -->
-        @foreach ($kategoriList as $kat)
-            @if (isset($menus[$kat]) && $menus[$kat]->count() > 0)
-                <section class="section" id="tab-{{ $kat }}">
-                    <h2 class="section-title">{{ strtoupper($kat) }}</h2>
-                    <div class="menu-grid" id="grid-{{ $kat }}">
-                        @foreach ($menus[$kat] as $index => $item)
-                            <div class="menu-card" style="animation-delay: {{ $index * 0.07 }}s">
-                                <img
-                                    class="card-img"
-                                    src="{{ $item->foto ? 'data:image/jpeg;base64,' . base64_encode($item->foto) : '/default.png' }}"
-                                    alt="{{ $item->nama_menu }}"
-                                    loading="lazy"
-                                />
-                                <div class="card-body">
-                                    <div class="card-name">{{ $item->nama_menu }}</div>
-                                    <div class="card-price">Rp{{ number_format($item->harga, 0, ',', '.') }}</div>
-                                    <button
-                                        class="btn-tambah"
-                                        data-id="{{ $item->id_menu }}"
-                                    >
-                                        Tambah
-                                    </button>
-                                </div>
-                            </div>
-                        @endforeach
+        <h2 class="section-title">Senyawa Burger</h2>
+        <section class="section" id="tab-menu">
+            <div class="menu-grid" id="grid-menu">
+                @foreach ($menus as $index => $item)
+                    <div class="menu-card" style="animation-delay: {{ $index * 0.07 }}s">
+                        <img
+                            class="card-img"
+                            src="{{ $item->foto ? 'data:image/jpeg;base64,' . base64_encode($item->foto) : '/default.png' }}"
+                            alt="{{ $item->nama_menu }}"
+                            loading="lazy"
+                        />
+                        <div class="card-body">
+                            <div class="card-name">{{ $item->nama_menu }}</div>
+                            <div class="card-price">Rp{{ number_format($item->harga, 0, ',', '.') }}</div>
+                            <button
+                                class="btn-tambah"
+                                data-id="{{ $item->id_menu }}"
+                            >
+                                Tambah
+                            </button>
+                        </div>
                     </div>
-                </section>
-            @endif
-        @endforeach
+                @endforeach
+            </div>
+        </section>
 
         <!-- CART BAR -->
         <div class="cart-bar" id="cartBar" onclick="window.location.href='{{ url('/keranjang') }}'">
@@ -106,8 +75,6 @@
         font-family: "Nunito", sans-serif;
         background: var(--cream);
         color: var(--text);
-        max-width: 480px;
-        margin: 0 auto;
         min-height: 100vh;
         overflow-x: hidden;
     }
@@ -244,7 +211,8 @@
     /* ── SECTION ── */
     .section {
         display: block;
-        padding: 20px 16px 32px;
+        padding:2px 80px 10px;
+        margin: 0 auto;
     }
     /* last section gets bottom padding for cart bar */
     .section:last-of-type {
@@ -260,6 +228,7 @@
         display: flex;
         align-items: center;
         gap: 12px;
+        padding: 20px 80px 2px;
     }
 
     .section-title::after {
@@ -273,8 +242,26 @@
     /* ── GRID ── */
     .menu-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
+    }
+
+    @media (min-width: 640px) {
+        .menu-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
+
+    @media (min-width: 900px) {
+        .menu-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+    }
+
+    @media (min-width: 1200px) {
+        .menu-grid {
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+        }
     }
 
     .menu-card {

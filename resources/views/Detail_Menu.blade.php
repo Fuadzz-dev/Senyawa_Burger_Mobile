@@ -126,8 +126,6 @@
         font-family: "Nunito", sans-serif;
         background: var(--cream);
         color: var(--text);
-        max-width: 480px;
-        margin: 0 auto;
         min-height: auto;
         overflow-x: hidden;
     }
@@ -207,7 +205,9 @@
 
     /* ── Content Body ── */
     .body {
-        padding: 20px 16px 120px;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 20px 24px 160px;
     }
 
     .product-name {
@@ -334,9 +334,9 @@
     /* ── Bottom Bar ── */
     .bottom-bar {
         bottom: 0;
+        left: 0;
         width: 100%;
-        max-width: 480px;
-        padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
+        padding: 10px max(16px, calc((100% - 900px) / 2)) calc(16px + env(safe-area-inset-bottom));
         position: fixed;
         background-color: #f5f0eb;
     }
@@ -477,6 +477,24 @@
     }
     .bottom-bar {
         animation: fadeUp 0.4s ease 0.1s both;
+    }
+
+    @media (min-width: 768px) {
+        .bottom-bar {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
+            align-items: center;
+            gap: 24px;
+        }
+
+        .quantity-row {
+            order: 0;
+            margin: 0;
+        }
+
+        .btn-order {
+            order: 1;
+        }
     }
     @keyframes fadeUp {
         from {

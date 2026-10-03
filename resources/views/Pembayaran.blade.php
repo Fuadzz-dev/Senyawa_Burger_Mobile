@@ -136,8 +136,6 @@
         font-family: "Nunito", sans-serif;
         background: var(--cream);
         color: var(--text);
-        max-width: 480px;
-        margin: 0 auto;
         min-height: 100vh;
         overflow-x: hidden;
         padding-bottom: 120px;
@@ -201,6 +199,13 @@
         padding: 18px 16px 0;
     }
 
+    .section {
+        width: 100%;
+        max-width: 720px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
     /* Section Title */
     .section-title {
         font-family: "Bebas Neue", cursive;
@@ -225,7 +230,9 @@
     .divider-line {
         height: 2px;
         background: #eee;
-        margin: 0 16px;
+        width: 100%;
+        max-width: 720px;
+        margin: 0 auto;
     }
 
     /* ── Form ── */
@@ -379,16 +386,14 @@
     .bottom-bar {
         position: fixed;
         bottom: 0;
-        left: 50%;
-        transform: translateX(-50%);
+        left: 0;
         width: 100%;
-        max-width: 480px;
         background: var(--card-bg);
         border-top: 2px solid #eee;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+        padding: 14px max(16px, calc((100% - 720px) / 2)) calc(14px + env(safe-area-inset-bottom));
         box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
         z-index: 50;
     }
@@ -476,7 +481,7 @@
         background: var(--card-bg);
         border-radius: 20px 20px 0 0;
         width: 100%;
-        max-width: 480px;
+        max-width: 720px;
         padding: 24px 16px 36px;
         animation: slideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1);
     }

@@ -9,19 +9,10 @@ class MenuController extends Controller
 {
     public function index()
     {
-        // Get all unique categories
-        $kategoriList = Menu::select('Kategori')
-            ->where('status_tersedia', true)
-            ->distinct()
-            ->pluck('Kategori')
-            ->toArray();
-
-        // Get menus and group them by Kategori
         $menus = Menu::where('status_tersedia', true)
-            ->get()
-            ->groupBy('Kategori');
+            ->get();
 
-        return view('Menu', compact('kategoriList', 'menus'));
+        return view('Menu', compact('menus'));
     }
 
     public function detail($id_menu)

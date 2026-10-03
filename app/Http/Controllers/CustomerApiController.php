@@ -49,6 +49,7 @@ class CustomerApiController extends Controller
     }
 
     /**
+     * STEP 1
      * POST /api/customer/orders
      * Membuat order terlebih dahulu sebelum checkout.
      */
@@ -111,7 +112,7 @@ class CustomerApiController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Order berhasil dibuat. Silakan lanjut ke proses checkout.',
+            'message' => 'Order berhasil dibuat. Silakan lanjut ke proses checkout menggunakan id_pesanan ini.',
             'data' => [
                 'id_pesanan' => $pesanan->id_pesanan,
                 'total_pesanan' => $pesanan->total_pesanan,
@@ -122,6 +123,7 @@ class CustomerApiController extends Controller
     }
 
     /**
+     * STEP 2 (opsional)
      * PATCH /api/customer/orders/{id}
      * Update data order dan item-itemnya.
      */
@@ -213,119 +215,59 @@ class CustomerApiController extends Controller
     }
 
     /**
+     * STEP 3
      * POST /api/customer/checkout
-     * Membuat pesanan pelanggan dari cart atau order yang sudah dibuat.
+     * Memproses pembayaran (kasir atau Duitku) untuk order yang SUDAH DIBUAT
+     * melalui POST /api/customer/orders. order_id WAJIB dikirim.
      */
     public function checkout(Request $request)
     {
         $request->validate([
-            'order_id' => 'nullable|integer|min:1',
-            'nama' => 'required_without:order_id|string|max:255',
-            'phone' => ['required_without:order_id', 'regex:/^(?:\+62|08)[0-9]{8,13}$/'],
-            'email' => 'required_without:order_id|email',
-            'cart' => 'nullable|array|min:1',
-            'amount' => 'nullable|numeric|min:1',
+            'order_id' => 'required|integer|min:1',
+            'paymentMethod' => 'nullable|string|in:online,kasir',
         ], [
-            'nama.required_without' => 'Nama pelanggan wajib diisi.',
-            'phone.required_without' => 'Nomor telepon wajib diisi.',
-            'phone.regex' => 'Format nomor telepon tidak valid.',
-            'email.required_without' => 'Email wajib diisi.',
-            'email.email' => 'Format email tidak valid.',
-            'cart.min' => 'Keranjang pesanan tidak boleh kosong.',
-            'amount.min' => 'Total pembayaran wajib diisi.',
+            'order_id.required' => 'order_id wajib diisi. Buat order terlebih dahulu melalui POST /api/customer/orders.',
+            'order_id.integer' => 'order_id tidak valid.',
+            'paymentMethod.in' => 'paymentMethod harus salah satu dari: online, kasir.',
         ]);
 
-        $orderId = $request->input('order_id');
-        $paymentMethod = $request->input('paymentMethod', 'online');
+        $pesanan = Pesanan::with('detailPesanan')->find($request->input('order_id'));
 
-        $pesanan = null;
-        if ($orderId) {
-            $pesanan = Pesanan::with('detailPesanan')->find($orderId);
-            if (! $pesanan) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Order tidak ditemukan.',
-                ], 404);
-            }
-        }
-
-        $nama = $request->input('nama', $pesanan?->nama);
-        $phone = $request->input('phone', $pesanan?->no_telepon);
-        $email = $request->input('email', $pesanan?->email);
-        $catatan = $request->input('catatan', $pesanan?->catatan);
-        $cart = $request->input('cart', $pesanan?->detailPesanan->map(function ($detail) {
-            return [
-                'id' => $detail->id_menu,
-                'qty' => (int) $detail->jumlah,
-                'price' => (float) $detail->harga_satuan * (int) $detail->jumlah,
-                'notes' => $detail->kustomisasi,
-            ];
-        })->values()->all() ?? []);
-
-        if (empty($cart) && ! $pesanan) {
+        if (! $pesanan) {
             return response()->json([
                 'success' => false,
-                'message' => 'Keranjang pesanan tidak boleh kosong.',
+                'message' => 'Order tidak ditemukan. Pastikan order dibuat terlebih dahulu melalui POST /api/customer/orders.',
+            ], 404);
+        }
+
+        if ($pesanan->detailPesanan->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pesanan belum memiliki item. Tambahkan item terlebih dahulu sebelum checkout.',
             ], 400);
         }
 
-        $amount = (float) ($request->input('amount') ?? $pesanan?->total_harga ?? 0);
+        if (strtolower((string) $pesanan->status_pembayaran) === 'lunas') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pesanan ini sudah lunas.',
+            ], 400);
+        }
 
-        if (! $pesanan) {
-            $merchantCode = env('DUITKU_MERCHANT_CODE');
-            $apiKey = env('DUITKU_API_KEY');
-
-            if (! $merchantCode || ! $apiKey) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Konfigurasi Duitku belum diset. Isi DUITKU_MERCHANT_CODE dan DUITKU_API_KEY di file .env.',
-                ], 500);
-            }
-
-            $totalPesanan = 0;
-            foreach ($cart as $item) {
-                $totalPesanan += (int) ($item['qty'] ?? 0);
-            }
-
-            $reference = 'SB-' . time() . '-' . Str::upper(Str::random(6));
-
-            $pesanan = DB::transaction(function () use ($nama, $phone, $email, $amount, $catatan, $cart, $reference, $totalPesanan) {
-                $newPesanan = Pesanan::create([
-                    'nama' => $nama,
-                    'no_telepon' => $phone,
-                    'email' => $email,
-                    'total_harga' => $amount,
-                    'total_pesanan' => $totalPesanan,
-                    'status_pembayaran' => 'Belum Lunas',
-                    'payment_reference' => $reference,
-                    'catatan' => $catatan,
-                ]);
-
-                foreach ($cart as $item) {
-                    DetailPesanan::create([
-                        'id_pesanan' => $newPesanan->id_pesanan,
-                        'id_menu' => $item['id'],
-                        'jumlah' => (int) ($item['qty'] ?? 0),
-                        'harga_satuan' => (float) ($item['price'] ?? 0),
-                        'kustomisasi' => $item['notes'] ?? $item['note'] ?? null,
-                    ]);
-                }
-
-                return $newPesanan;
-            });
-        } else {
-            $pesanan->nama = $nama;
-            $pesanan->no_telepon = $phone;
-            $pesanan->email = $email;
-            $pesanan->catatan = $catatan;
-            $pesanan->total_harga = $amount ?: $pesanan->total_harga;
+        // Boleh override catatan saat checkout, tapi nama/phone/email/items
+        // sudah ditetapkan lewat createOrder / updateOrder, tidak dibuat ulang di sini.
+        if ($request->has('catatan')) {
+            $pesanan->catatan = $request->input('catatan');
             $pesanan->save();
         }
+
+        $paymentMethod = $request->input('paymentMethod', 'online');
+        $amount = (float) $pesanan->total_harga;
 
         if (strtolower((string) $paymentMethod) === 'kasir') {
             return response()->json([
                 'success' => true,
-                'message' => 'Pesanan berhasil dibuat. Silakan bayar di kasir.',
+                'message' => 'Pesanan berhasil dikonfirmasi. Silakan bayar di kasir.',
                 'data' => [
                     'id_pesanan' => $pesanan->id_pesanan,
                     'status_pembayaran' => $pesanan->status_pembayaran,
@@ -357,8 +299,8 @@ class CustomerApiController extends Controller
             'paymentAmount' => (string) $amount,
             'paymentMethod' => 'SP',
             'productDetails' => 'Pembayaran Pesanan Senyawa Burger',
-            'email' => $email,
-            'customerVaName' => $nama,
+            'email' => $pesanan->email,
+            'customerVaName' => $pesanan->nama,
             'callbackUrl' => $callbackUrl,
             'returnUrl' => $returnUrl,
             'signature' => $signature,
@@ -378,7 +320,7 @@ class CustomerApiController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Pesanan berhasil dibuat. Silakan lanjut ke pembayaran.',
+            'message' => 'Pesanan berhasil diproses. Silakan lanjut ke pembayaran.',
             'data' => [
                 'id_pesanan' => $pesanan->id_pesanan,
                 'order_id' => $pesanan->id_pesanan,
